@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>96-Well Plate Sample Parser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: inline-block;
+            width: 150px;
+            font-weight: bold;
+        }
+        
+        input[type="file"] {
+            margin-bottom: 10px;
+        }
+        
+        select, input[type="text"] {
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .plate-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .plate {
+            border: 2px solid #333;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .plate-grid {
+            display: grid;
+            gap: 2px;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        
+        .row-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            background: #e9ecef;
+        }
+        
+        .col-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            background: #e9ecef;
+        }
+        
+        .well {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            cursor: pointer;
+            font-size: 10px;
+            text-align: center;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .well:hover {
+            background: #e3f2fd;
+        }
+        
+        .well.filled {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .well.selected {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .well.preview {
+            background: #2196f3;
+            color: white;
+        }
+        
+        .well.pre-mapped {
+            background: #9c27b0;
+            color: white;
+        }
+        
+        .well.conflict {
+            background: #f44336;
+            color: white;
+        }
+        
+        /* Enhanced well hover effects */
+        .well {
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .well:hover {
+            transform: scale(1.1);
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        /* Custom tooltip for wells */
+        .well-tooltip {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            pointer-events: none;
+            border: 1px solid #555;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            display: none;
+        }
+        
+        .sample-list {
+            flex: 1;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background: #fafafa;
+        }
+        
+        .sample-item {
+            padding: 5px;
+            margin: 2px 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .sample-item.assigned {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .sample-item.highlighted {
+            background: #fff3cd !important;
+            border-color: #ffeaa7 !important;
+            box-shadow: 0 0 0 2px #ffc107;
+        }
+        
+        .info-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 5px;
+            border: 1px solid #bee5eb;
+        }
+        
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .success {
+            color: #155724;
+            background: #d1e7dd;
+            border: 1px solid #badbcc;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Well Plate Sample Parser</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="plateType">Plate Type:</label>
+                <select id="plateType">
+                    <option value="96">96-Well Plate (8x12)</option>
+                    <option value="384">384-Well Plate (16x24)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="csvFile">Sample Data File:</label>
+                <input type="file" id="csvFile" accept=".csv,.txt" />
+                <small style="display: block; color: #666; margin-top: 5px;">
+                    Supports CSV/TXT files with sample data or existing well mappings
+                </small>
+            </div>
+            
+            <div class="control-group">
+                <label for="startWell">Start Well:</label>
+                <select id="startWell">
+                    <option value="A1">A1</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="fillDirection">Fill Direction:</label>
+                <select id="fillDirection">
+                    <option value="horizontal">Horizontal (A1, A2, A3...)</option>
+                    <option value="vertical">Vertical (A1, B1, C1...)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="maxSamples">Max Samples:</label>
+                <input type="number" id="maxSamples" value="96" min="1" max="384" />
+            </div>
+            
+            <button id="previewBtn" disabled>Preview Assignment</button>
+            <button id="assignBtn" disabled>Assign Samples</button>
+            <button id="clearBtn">Clear Plate</button>
+            <button id="loadSamplesBtn" style="display: none;">Load Sample Data</button>
+            <button id="exportBtn" disabled>Export Layout</button>
+            <button id="showInvalidBtn" style="display: none;">Show Invalid Wells</button>
+        </div>
+        
+        <div id="messages"></div>
+        
+        <!-- Custom tooltip for wells -->
+        <div id="wellTooltip" class="well-tooltip"></div>
+        
+        <div class="plate-container">
+            <div class="plate">
+                <h3 id="plateTitle">96-Well Plate</h3>
+                <div class="plate-grid" id="plateGrid"></div>
+            </div>
+            
+            <div class="sample-list">
+                <h3>Sample List</h3>
+                <div id="sampleList">No CSV file loaded</div>
+            </div>
+        </div>
+        
+        <div class="info-panel">
+            <h4>Instructions:</h4>
+            <ol>
+                <li><strong>Select Plate:</strong> Choose 96-well (8x12) or 384-well (16x24) format</li>
+                <li><strong>Load Data:</strong> Upload CSV/TXT files with sample data or existing mappings</li>
+                <li><strong>Flexible Format:</strong> Supports comma, tab, space-separated files automatically</li>
+                <li><strong>Auto-detection:</strong> Automatically detects well mappings vs. sample data</li>
+                <li><strong>Pre-mapping:</strong> Purple wells show existing position assignments</li>
+                <li><strong>Smart Assignment:</strong> Auto-matches samples to pre-mapped positions</li>
+                <li><strong>Fill Patterns:</strong> Configure start well and direction for remaining samples</li>
+                <li><strong>Preview/Assign:</strong> Blue preview → Green confirmed assignments</li>
+                <li><strong>Export:</strong> Save complete layout with plate name extraction</li>
+            </ol>
+            
+            <h4>Supported File Formats:</h4>
+            <ul style="margin-bottom: 15px;">
+                <li><strong>Sample Lists:</strong> Single-column files with just sample IDs (List.txt)</li>
+                <li><strong>Sample Data:</strong> Multi-column CSV/TXT with sample IDs, rack positions</li>
+                <li><strong>Well Mappings:</strong> Files with Well,SampleID format (A1,Sample123 or A01,Sample123)</li>
+                <li><strong>Well Formats:</strong> Supports both A1, A2... and A01, A02... formatting</li>
+                <li><strong>Mixed Files:</strong> Files containing both mappings and additional samples</li>
+                <li><strong>Separators:</strong> Comma, tab, space, or pipe-separated values</li>
+            </ul>
+            
+            <h4>Color Legend:</h4>
+            <ul style="list-style: none; padding-left: 0;">
+                <li><span style="background: #9c27b0; color: white; padding: 2px 6px; margin-right: 10px;">Purple</span> Pre-mapped positions</li>
+                <li><span style="background: #2196f3; color: white; padding: 2px 6px; margin-right: 10px;">Blue</span> Preview assignments</li>
+                <li><span style="background: #4caf50; color: white; padding: 2px 6px; margin-right: 10px;">Green</span> Confirmed assignments</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let csvData = [];
+        let plateAssignments = {};
+        let preMappedPositions = {};
+        let isPreviewMode = false;
+        let plateName = '';
+        let fileType = '';
+        let currentPlateType = 96;
+        let invalidWells = [];
+        
+        // Generate well positions for current plate type
+        function generateWellPositions() {
+            const positions = [];
+            
+            if (currentPlateType === 96) {
+                const rows = 'ABCDEFGH';
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 1; col <= 12; col++) {
+                        positions.push(rows[row] + col);
+                    }
+                }
+            } else if (currentPlateType === 384) {
+                const rows = 'ABCDEFGHIJKLMNOP';
+                for (let row = 0; row < 16; row++) {
+                    for (let col = 1; col <= 24; col++) {
+                        positions.push(rows[row] + col);
+                    }
+                }
+            }
+            
+            return positions;
+        }
+        
+        // Get plate dimensions
+        function getPlateDimensions() {
+            if (currentPlateType === 96) {
+                return { rows: 8, cols: 12, rowLabels: 'ABCDEFGH' };
+            } else if (currentPlateType === 384) {
+                return { rows: 16, cols: 24, rowLabels: 'ABCDEFGHIJKLMNOP' };
+            }
+        }
+        
+        // Validate if a well position exists for the current plate type
+        function isValidWellPosition(wellId) {
+            const dimensions = getPlateDimensions();
+            const rowLetter = wellId.charAt(0);
+            const colNumber = parseInt(wellId.substring(1));
+            
+            // Check if row letter is valid
+            if (!dimensions.rowLabels.includes(rowLetter)) {
+                return false;
+            }
+            
+            // Check if column number is valid
+            if (colNumber < 1 || colNumber > dimensions.cols) {
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // Show custom tooltip for wells
+        function showWellTooltip(event, wellElement) {
+            const tooltip = document.getElementById('wellTooltip');
+            const wellId = wellElement.dataset.wellId;
+            
+            // Get sample ID if well is assigned
+            let sampleId = '';
+            let status = 'Empty';
+            
+            if (plateAssignments[wellId]) {
+                sampleId = plateAssignments[wellId];
+                if (wellElement.classList.contains('pre-mapped')) {
+                    status = 'pre-mapped';
+                } else if (wellElement.classList.contains('preview')) {
+                    status = 'preview';
+                } else {
+                    status = 'assigned';
+                }
+            }
+            
+            // Create tooltip text
+            let tooltipText = `Well ${wellId}`;
+            if (sampleId) {
+                tooltipText += `: ${sampleId}`;
+                if (status !== 'assigned') {
+                    tooltipText += ` (${status})`;
+                }
+            } else {
+                tooltipText += ' - Empty';
+            }
+            
+            tooltip.textContent = tooltipText;
+            tooltip.style.display = 'block';
+            updateTooltipPosition(event);
+        }
+        
+        // Hide custom tooltip
+        function hideWellTooltip() {
+            const tooltip = document.getElementById('wellTooltip');
+            tooltip.style.display = 'none';
+        }
+        
+        // Update tooltip position
+        function updateTooltipPosition(event) {
+            const tooltip = document.getElementById('wellTooltip');
+            if (tooltip.style.display === 'block') {
+                tooltip.style.left = (event.pageX + 10) + 'px';
+                tooltip.style.top = (event.pageY - 30) + 'px';
+            }
+        }
+        
+        // Highlight corresponding sample in the list
+        function highlightSampleInList(wellId) {
+            clearSampleHighlight();
+            
+            if (plateAssignments[wellId]) {
+                const sampleId = plateAssignments[wellId];
+                // Find sample in the list by data-sample-id attribute for exact matching
+                const sampleItems = document.querySelectorAll('.sample-item');
+                sampleItems.forEach(item => {
+                    const itemSampleId = item.dataset.sampleId;
+                    if (itemSampleId === sampleId) {
+                        item.classList.add('highlighted');
+                        // Scroll the highlighted item into view if needed
+                        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                });
+            }
+        }
+        
+        // Clear sample highlighting
+        function clearSampleHighlight() {
+            document.querySelectorAll('.sample-item.highlighted').forEach(item => {
+                item.classList.remove('highlighted');
+            });
+        }
+        
+        // Initialize the plate grid
+        function initializePlate() {
+            const grid = document.getElementById('plateGrid');
+            const dimensions = getPlateDimensions();
+            
+            grid.innerHTML = '';
+            
+            // Update grid layout
+            grid.style.gridTemplateColumns = `30px repeat(${dimensions.cols}, ${currentPlateType === 384 ? '25px' : '40px'})`;
+            grid.style.gridTemplateRows = `30px repeat(${dimensions.rows}, ${currentPlateType === 384 ? '25px' : '40px'})`;
+            
+            // Add empty corner cell
+            const corner = document.createElement('div');
+            grid.appendChild(corner);
+            
+            // Add column headers
+            for (let col = 1; col <= dimensions.cols; col++) {
+                const colLabel = document.createElement('div');
+                colLabel.className = 'col-label';
+                colLabel.textContent = col;
+                colLabel.style.fontSize = currentPlateType === 384 ? '10px' : '14px';
+                grid.appendChild(colLabel);
+            }
+            
+            // Add rows with row labels
+            for (let row = 0; row < dimensions.rows; row++) {
+                // Row label
+                const rowLabel = document.createElement('div');
+                rowLabel.className = 'row-label';
+                rowLabel.textContent = dimensions.rowLabels[row];
+                rowLabel.style.fontSize = currentPlateType === 384 ? '10px' : '14px';
+                grid.appendChild(rowLabel);
+                
+                // Wells for this row
+                for (let col = 1; col <= dimensions.cols; col++) {
+                    const well = document.createElement('div');
+                    const wellId = dimensions.rowLabels[row] + col;
+                    well.className = 'well';
+                    well.id = 'well-' + wellId;
+                    well.dataset.wellId = wellId;
+                    well.title = `Well ${wellId} - Empty`;
+                    well.style.width = currentPlateType === 384 ? '25px' : '40px';
+                    well.style.height = currentPlateType === 384 ? '25px' : '40px';
+                    well.style.fontSize = currentPlateType === 384 ? '6px' : '10px';
+                    
+                    // Add custom hover events
+                    well.addEventListener('mouseenter', function(e) {
+                        showWellTooltip(e, this);
+                        highlightSampleInList(this.dataset.wellId);
+                    });
+                    
+                    well.addEventListener('mouseleave', function() {
+                        hideWellTooltip();
+                        clearSampleHighlight();
+                    });
+                    
+                    well.addEventListener('mousemove', function(e) {
+                        updateTooltipPosition(e);
+                    });
+                    
+                    grid.appendChild(well);
+                }
+            }
+            
+            // Populate start well dropdown
+            const startWell = document.getElementById('startWell');
+            startWell.innerHTML = '';
+            generateWellPositions().forEach(pos => {
+                const option = document.createElement('option');
+                option.value = pos;
+                option.textContent = pos;
+                startWell.appendChild(option);
+            });
+            
+            // Update plate title
+            document.getElementById('plateTitle').textContent = `${currentPlateType}-Well Plate${plateName ? ': ' + plateName : ''}`;
+        }
+        
+        // Detect file content type and format
+        function detectFileType(content) {
+            const lines = content.trim().split('\n').filter(line => line.trim());
+            if (lines.length === 0) return { type: 'unknown', hasWellFormat: false };
+            
+            let wellFormatCount = 0;
+            let sampleDataCount = 0;
+            let singleColumnCount = 0;
+            
+            // Check first few lines for patterns
+            const sampleLines = lines.slice(0, Math.min(10, lines.length));
+            
+            for (const line of sampleLines) {
+                // Skip potential headers
+                if (line.toLowerCase().includes('well') && line.toLowerCase().includes('sample')) continue;
+                
+                // Detect separator (tab, comma, or space)
+                const separators = ['\t', ',', ' '];
+                let parts = [];
+                let hasMultipleColumns = false;
+                
+                for (const sep of separators) {
+                    const testParts = line.split(sep).map(p => p.trim().replace(/"/g, ''));
+                    if (testParts.length >= 2 && testParts[0] && testParts[1]) {
+                        parts = testParts;
+                        hasMultipleColumns = true;
+                        break;
+                    }
+                }
+                
+                if (hasMultipleColumns && parts.length >= 2) {
+                    const firstCol = parts[0];
+                    
+                    // Check if first column looks like any well format pattern (loose check for detection)
+                    const anyWellPattern = /^[A-Z]\d+$/;
+                    
+                    if (anyWellPattern.test(firstCol)) {
+                        // Further validate if it's a valid well for current plate type
+                        const rowLetter = firstCol.charAt(0);
+                        const colNumber = parseInt(firstCol.substring(1));
+                        const standardWell = rowLetter + colNumber;
+                        
+                        if (isValidWellPosition(standardWell)) {
+                            wellFormatCount++;
+                        } else {
+                            // It looks like a well but isn't valid for this plate type
+                            // Still count as well format for detection purposes
+                            wellFormatCount++;
+                        }
+                    } else {
+                        sampleDataCount++;
+                    }
+                } else {
+                    // Single column data
+                    const singleValue = line.trim().replace(/"/g, '');
+                    if (singleValue) {
+                        singleColumnCount++;
+                        
+                        // Check if single value looks like any well format pattern
+                        const anyWellPattern = /^[A-Z]\d+$/;
+                        
+                        if (anyWellPattern.test(singleValue)) {
+                            wellFormatCount++;
+                        } else {
+                            sampleDataCount++;
+                        }
+                    }
+                }
+            }
+            
+            // Determine file type based on patterns
+            if (wellFormatCount > sampleDataCount) {
+                return { type: 'mapping', hasWellFormat: true };
+            } else {
+                return { type: 'samples', hasWellFormat: false };
+            }
+        }
+        
+        // Parse any file content flexibly
+        function parseFileContent(content) {
+            const lines = content.trim().split('\n');
+            const data = [];
+            const mappings = {};
+            invalidWells = []; // Reset invalid wells for new file
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                
+                // Skip header line if present
+                if (i === 0 && (line.toLowerCase().includes('well') || line.toLowerCase().includes('sample'))) {
+                    continue;
+                }
+                
+                // First, try to detect separator-based data (tab, comma, space, or pipe)
+                const separators = ['\t', ',', ' ', '|'];
+                let parts = [];
+                let usedSeparator = '';
+                let hasMultipleColumns = false;
+                
+                for (const sep of separators) {
+                    const testParts = line.split(sep).map(p => p.trim().replace(/"/g, ''));
+                    if (testParts.length >= 2 && testParts[0] && testParts[1]) {
+                        parts = testParts;
+                        usedSeparator = sep;
+                        hasMultipleColumns = true;
+                        break;
+                    }
+                }
+                
+                // If no separators found, treat as single-column data
+                if (!hasMultipleColumns) {
+                    const singleValue = line.trim().replace(/"/g, '');
+                    if (singleValue && singleValue !== 'NONE') {
+                        // Check if this looks like any well format pattern
+                        const anyWellPattern = /^[A-Z]\d+$/;
+                        
+                        if (anyWellPattern.test(singleValue)) {
+                            // Single well without sample ID - skip or could be placeholder
+                            continue;
+                        } else {
+                            // This is a sample ID in single-column format
+                            data.push({
+                                sampleId: singleValue,
+                                rack: '',
+                                position: '',
+                                originalLine: line
+                            });
+                        }
+                    }
+                } else {
+                    // Multi-column data processing
+                    const firstCol = parts[0];
+                    const secondCol = parts.length > 1 ? parts[1] : '';
+                    const thirdCol = parts.length > 2 ? parts[2] : '';
+                    
+                    // First check if this looks like any well format pattern (loose check)
+                    const anyWellPattern = /^[A-Z]\d+$/;
+                    
+                    if (anyWellPattern.test(firstCol) && secondCol) {
+                        // Convert to standard format (A01 -> A1, A1 -> A1)
+                        const rowLetter = firstCol.charAt(0);
+                        const colNumber = parseInt(firstCol.substring(1));
+                        const standardWell = rowLetter + colNumber;
+                        
+                        // Validate well position exists for current plate type
+                        if (isValidWellPosition(standardWell)) {
+                            console.log(`Valid well: ${firstCol} -> ${standardWell} (Sample: ${secondCol})`);
+                            mappings[standardWell] = secondCol;
+                        } else {
+                            console.log(`Invalid well detected: ${firstCol} -> ${standardWell} (Sample: ${secondCol})`);
+                            invalidWells.push({
+                                original: firstCol,
+                                converted: standardWell,
+                                sampleId: secondCol,
+                                line: line
+                            });
+                        }
+                    } else if (firstCol && firstCol !== 'NONE') {
+                        // This is sample data
+                        data.push({
+                            sampleId: firstCol,
+                            rack: secondCol,
+                            position: thirdCol,
+                            originalLine: line
+                        });
+                    }
+                }
+            }
+            
+            return { sampleData: data, wellMappings: mappings };
+        }
+        
+        // Display samples in the list
+        function displaySamples() {
+            const sampleList = document.getElementById('sampleList');
+            
+            if (fileType === 'mapping') {
+                // Display pre-mapped positions
+                const mappingCount = Object.keys(preMappedPositions).length;
+                let html = `<div style="margin-bottom: 10px;"><strong>Pre-mapped Positions: ${mappingCount}</strong></div>`;
+                
+                Object.entries(preMappedPositions).forEach(([well, sampleId]) => {
+                    html += `<div class="sample-item assigned" data-well="${well}" data-sample-id="${sampleId}">
+                        <div><strong>${well}: ${sampleId}</strong></div>
+                        <div>Pre-mapped position</div>
+                    </div>`;
+                });
+                
+                sampleList.innerHTML = html;
+                return;
+            }
+            
+            if (csvData.length === 0) {
+                sampleList.innerHTML = 'No samples loaded';
+                return;
+            }
+            
+            let html = `<div style="margin-bottom: 10px;"><strong>Total Samples: ${csvData.length}</strong></div>`;
+            
+            csvData.forEach((sample, index) => {
+                const isAssigned = Object.values(plateAssignments).includes(sample.sampleId);
+                const isPreMapped = Object.values(preMappedPositions).includes(sample.sampleId);
+                const status = isAssigned ? 'assigned' : (isPreMapped ? 'pre-mapped' : '');
+                
+                html += `<div class="sample-item ${status}" data-index="${index}" data-sample-id="${sample.sampleId}">
+                    <div><strong>${sample.sampleId}</strong></div>
+                    ${sample.rack || sample.position ? `<div>Rack: ${sample.rack} | Pos: ${sample.position}</div>` : '<div style="color: #888; font-size: 11px;">Single-column sample</div>'}
+                    ${isPreMapped ? '<div style="color: #9c27b0; font-size: 11px;">Found in pre-mapping</div>' : ''}
+                </div>`;
+            });
+            
+            sampleList.innerHTML = html;
+        }
+        
+        // Calculate well positions based on start well and direction
+        function calculatePositions(startWell, direction, count) {
+            const dimensions = getPlateDimensions();
+            const startRow = startWell.charCodeAt(0) - 'A'.charCodeAt(0);
+            const startCol = parseInt(startWell.substring(1)) - 1;
+            
+            const positions = [];
+            let row = startRow;
+            let col = startCol;
+            
+            // Calculate actual maximum wells for the plate type
+            const maxWells = dimensions.rows * dimensions.cols;
+            
+            for (let i = 0; i < count && positions.length < maxWells; i++) {
+                if (row >= 0 && row < dimensions.rows && col >= 0 && col < dimensions.cols) {
+                    positions.push(dimensions.rowLabels[row] + (col + 1));
+                }
+                
+                if (direction === 'horizontal') {
+                    col++;
+                    if (col >= dimensions.cols) {
+                        col = 0;
+                        row++;
+                    }
+                } else { // vertical
+                    row++;
+                    if (row >= dimensions.rows) {
+                        row = 0;
+                        col++;
+                    }
+                }
+                
+                // Stop if we've gone beyond the plate
+                if (row >= dimensions.rows && col >= dimensions.cols) break;
+            }
+            
+            return positions;
+        }
+        
+        // Preview sample assignment
+        function previewAssignment() {
+            clearPreview();
+            
+            const startWell = document.getElementById('startWell').value;
+            const direction = document.getElementById('fillDirection').value;
+            const maxSamples = parseInt(document.getElementById('maxSamples').value);
+            
+            const samplesToAssign = csvData.slice(0, Math.min(maxSamples, csvData.length));
+            const positions = calculatePositions(startWell, direction, samplesToAssign.length);
+            
+            // Show preview
+            positions.forEach((pos, index) => {
+                const well = document.getElementById('well-' + pos);
+                if (well && index < samplesToAssign.length) {
+                    well.classList.add('preview');
+                    well.textContent = samplesToAssign[index].sampleId.substring(0, 8);
+                    well.title = `Well ${pos}: ${samplesToAssign[index].sampleId} (preview)`;
+                }
+            });
+            
+            isPreviewMode = true;
+            showMessage(`Preview: ${positions.length} samples will be assigned starting from ${startWell}`, 'success');
+        }
+        
+        // Auto-map samples based on pre-mapped positions
+        function autoMapSamples() {
+            if (Object.keys(preMappedPositions).length === 0 || csvData.length === 0) {
+                return { mapped: 0, remaining: csvData };
+            }
+            
+            let mappedCount = 0;
+            const remainingSamples = [];
+            
+            // First, try to match samples that are in pre-mapped positions
+            csvData.forEach(sample => {
+                let found = false;
+                for (const [well, preMappedSampleId] of Object.entries(preMappedPositions)) {
+                    if (sample.sampleId === preMappedSampleId) {
+                        plateAssignments[well] = sample.sampleId;
+                        mappedCount++;
+                        found = true;
+                        
+                        const wellElement = document.getElementById('well-' + well);
+                        if (wellElement) {
+                            wellElement.classList.add('pre-mapped');
+                            wellElement.textContent = sample.sampleId.substring(0, 8);
+                            wellElement.title = `Well ${well}: ${sample.sampleId} (pre-mapped)`;
+                        }
+                        break;
+                    }
+                }
+                if (!found) {
+                    remainingSamples.push(sample);
+                }
+            });
+            
+            return { mapped: mappedCount, remaining: remainingSamples };
+        }
+        
+        // Validate plate capacity
+        function validatePlateCapacity() {
+            const dimensions = getPlateDimensions();
+            const maxWells = dimensions.rows * dimensions.cols;
+            const totalSamples = csvData.length + Object.keys(preMappedPositions).length;
+            
+            if (totalSamples > maxWells) {
+                const excessSamples = totalSamples - maxWells;
+                showMessage(`Warning: Sample list (${totalSamples}) exceeds number of wells in ${currentPlateType}-well plate (${maxWells}). ${excessSamples} samples will not be assigned.`, 'error');
+                return false;
+            }
+            return true;
+        }
+        
+        // Assign samples to plate
+        function assignSamples() {
+            clearPlate();
+            
+            // Validate plate capacity
+            const dimensions = getPlateDimensions();
+            const maxWells = dimensions.rows * dimensions.cols;
+            const totalSamples = csvData.length + Object.keys(preMappedPositions).length;
+            
+            if (totalSamples > maxWells) {
+                const excessSamples = totalSamples - maxWells;
+                showMessage(`Warning: Sample list (${totalSamples}) exceeds capacity of ${currentPlateType}-well plate (${maxWells}). Only first ${maxWells} samples will be assigned. ${excessSamples} samples excluded.`, 'error');
+            }
+            
+            // First, apply pre-mapped positions if available
+            let remainingSamples = csvData;
+            let autoMappedCount = 0;
+            
+            if (Object.keys(preMappedPositions).length > 0) {
+                const autoMapResult = autoMapSamples();
+                autoMappedCount = autoMapResult.mapped;
+                remainingSamples = autoMapResult.remaining;
+            }
+            
+            // Then assign remaining samples using normal logic
+            const startWell = document.getElementById('startWell').value;
+            const direction = document.getElementById('fillDirection').value;
+            const maxSamples = parseInt(document.getElementById('maxSamples').value);
+            
+            // Limit samples to available capacity
+            const availableCapacity = maxWells - autoMappedCount;
+            const samplesToAssign = remainingSamples.slice(0, Math.min(maxSamples - autoMappedCount, remainingSamples.length, availableCapacity));
+            
+            // Get available positions (excluding pre-mapped ones)
+            const allPositions = calculatePositions(startWell, direction, maxWells);
+            const availablePositions = allPositions.filter(pos => !plateAssignments[pos]);
+            
+            // Assign remaining samples to available positions
+            samplesToAssign.forEach((sample, index) => {
+                if (index < availablePositions.length) {
+                    const pos = availablePositions[index];
+                    plateAssignments[pos] = sample.sampleId;
+                    
+                    const well = document.getElementById('well-' + pos);
+                    if (well) {
+                        well.classList.add('filled');
+                        well.textContent = sample.sampleId.substring(0, 8);
+                        well.title = `Well ${pos}: ${sample.sampleId}`;
+                    }
+                }
+            });
+            
+            isPreviewMode = false;
+            document.getElementById('exportBtn').disabled = false;
+            displaySamples(); // Refresh to show assigned status
+            
+            const totalAssigned = Object.keys(plateAssignments).length;
+            const unassignedSamples = totalSamples - totalAssigned;
+            
+            let message = `Successfully assigned ${totalAssigned} samples to the plate`;
+            if (autoMappedCount > 0) {
+                message += ` (${autoMappedCount} auto-mapped from existing positions)`;
+            }
+            if (unassignedSamples > 0) {
+                message += `. ${unassignedSamples} samples could not be assigned due to plate capacity.`;
+            }
+            showMessage(message, unassignedSamples > 0 ? 'error' : 'success');
+        }
+        
+        // Clear preview styling
+        function clearPreview() {
+            document.querySelectorAll('.well.preview').forEach(well => {
+                well.classList.remove('preview');
+                if (!well.classList.contains('filled') && !well.classList.contains('pre-mapped')) {
+                    well.textContent = '';
+                    well.title = `Well ${well.dataset.wellId} - Empty`;
+                }
+            });
+            isPreviewMode = false;
+        }
+        
+        // Clear all assignments
+        function clearPlate() {
+            plateAssignments = {};
+            invalidWells = [];
+            document.querySelectorAll('.well').forEach(well => {
+                well.classList.remove('filled', 'preview', 'selected', 'pre-mapped', 'conflict');
+                well.textContent = '';
+                well.title = `Well ${well.dataset.wellId} - Empty`;
+            });
+            document.getElementById('exportBtn').disabled = true;
+            document.getElementById('showInvalidBtn').style.display = 'none';
+            displaySamples();
+        }
+        
+        // Load and display pre-mapped positions
+        function loadPreMappedPositions() {
+            // Clear existing assignments but keep pre-mapped positions visible
+            plateAssignments = { ...preMappedPositions };
+            
+            Object.entries(preMappedPositions).forEach(([well, sampleId]) => {
+                // Double-check that this well is valid before displaying
+                if (isValidWellPosition(well)) {
+                    const wellElement = document.getElementById('well-' + well);
+                    if (wellElement) {
+                        wellElement.classList.add('pre-mapped');
+                        wellElement.textContent = sampleId.substring(0, 8);
+                        wellElement.title = `Well ${well}: ${sampleId} (pre-mapped)`;
+                    }
+                } else {
+                    console.warn(`Skipping invalid well in loadPreMappedPositions: ${well}`);
+                }
+            });
+            
+            if (Object.keys(preMappedPositions).length > 0) {
+                document.getElementById('exportBtn').disabled = false;
+            }
+        }
+        
+        // Extract plate name from filename
+        function extractPlateName(filename) {
+            // Remove file extension
+            const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+            
+            // Extract everything after "Export_Plate_"
+            const prefix = "Export_Plate_";
+            const startIndex = nameWithoutExt.indexOf(prefix);
+            
+            if (startIndex !== -1) {
+                return nameWithoutExt.substring(startIndex + prefix.length);
+            }
+            
+            // Fallback: use the filename without extension
+            return nameWithoutExt;
+        }
+        
+        // Export plate layout to CSV
+        function exportLayout() {
+            if (Object.keys(plateAssignments).length === 0) {
+                showMessage('No assignments to export', 'error');
+                return;
+            }
+            
+            let csvContent = 'Well,Sample_ID\n';
+            
+            // Export in well order (A1, A2, ..., H12)
+            generateWellPositions().forEach(well => {
+                if (plateAssignments[well]) {
+                    csvContent += `${well},${plateAssignments[well]}\n`;
+                }
+            });
+            
+            // Create download with plate name
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Use plate name in export filename
+            const exportFilename = plateName ? `Plate_Layout_${plateName}.csv` : 'plate_layout.csv';
+            a.download = exportFilename;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            showMessage(`Plate layout exported as: ${exportFilename}`, 'success');
+        }
+        
+        // Show message to user
+        function showMessage(message, type) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                messagesDiv.innerHTML = '';
+            }, 5000);
+        }
+        
+        // Event listeners
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Extract plate name from filename
+                plateName = extractPlateName(file.name);
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        clearPlate();
+                        
+                        // Parse file content flexibly
+                        const parsed = parseFileContent(e.target.result);
+                        const detectedType = detectFileType(e.target.result);
+                        
+                        if (parsed.wellMappings && Object.keys(parsed.wellMappings).length > 0) {
+                            // File contains well mappings
+                            fileType = 'mapping';
+                            preMappedPositions = parsed.wellMappings;
+                            csvData = parsed.sampleData; // May also contain sample data
+                            
+                            loadPreMappedPositions();
+                            displaySamples();
+                            
+                            let message = '';
+                            if (csvData.length > 0) {
+                                // Has both mappings and samples
+                                document.getElementById('previewBtn').disabled = false;
+                                document.getElementById('assignBtn').disabled = false;
+                                const maxWells = getPlateDimensions().rows * getPlateDimensions().cols;
+                                document.getElementById('maxSamples').max = csvData.length + Object.keys(preMappedPositions).length;
+                                document.getElementById('maxSamples').value = Math.min(maxWells, csvData.length + Object.keys(preMappedPositions).length);
+                                message = `Loaded ${Object.keys(preMappedPositions).length} pre-mapped positions and ${csvData.length} additional samples (Plate: ${plateName})`;
+                            } else {
+                                // Only mappings
+                                document.getElementById('previewBtn').disabled = true;
+                                document.getElementById('assignBtn').disabled = true;
+                                document.getElementById('loadSamplesBtn').style.display = 'inline-block';
+                                message = `Loaded ${Object.keys(preMappedPositions).length} pre-mapped positions (Plate: ${plateName}). Use "Load Sample Data" to add samples.`;
+                            }
+                            
+                            // Add warning about invalid wells if any
+                            if (invalidWells.length > 0) {
+                                message += ` Warning: ${invalidWells.length} invalid well position(s) excluded (incompatible with ${currentPlateType}-well plate).`;
+                                document.getElementById('showInvalidBtn').style.display = 'inline-block';
+                                showMessage(message, 'error');
+                            } else {
+                                document.getElementById('showInvalidBtn').style.display = 'none';
+                                showMessage(message, 'success');
+                            }
+                            
+                        } else if (parsed.sampleData.length > 0) {
+                            // File contains only sample data
+                            fileType = 'samples';
+                            csvData = parsed.sampleData;
+                            preMappedPositions = {};
+                            
+                            displaySamples();
+                            document.getElementById('previewBtn').disabled = false;
+                            document.getElementById('assignBtn').disabled = false;
+                            const maxWells = getPlateDimensions().rows * getPlateDimensions().cols;
+                            document.getElementById('maxSamples').max = csvData.length;
+                            document.getElementById('maxSamples').value = Math.min(maxWells, csvData.length);
+                            document.getElementById('loadSamplesBtn').style.display = 'none';
+                            
+                            let message = `Loaded ${csvData.length} samples (Plate: ${plateName})`;
+                            if (csvData.length > maxWells) {
+                                message += `. Warning: Sample count exceeds ${currentPlateType}-well plate capacity (${maxWells} wells).`;
+                                showMessage(message, 'error');
+                            } else {
+                                showMessage(message, 'success');
+                            }
+                        } else {
+                            showMessage('No valid data found in file. Please check file format.', 'error');
+                        }
+                        
+                        // Update plate title
+                        document.getElementById('plateTitle').textContent = `${currentPlateType}-Well Plate: ${plateName}`;
+                        
+                    } catch (error) {
+                        showMessage('Error parsing file: ' + error.message, 'error');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+        
+        document.getElementById('previewBtn').addEventListener('click', previewAssignment);
+        document.getElementById('assignBtn').addEventListener('click', assignSamples);
+        document.getElementById('clearBtn').addEventListener('click', clearPlate);
+        document.getElementById('exportBtn').addEventListener('click', exportLayout);
+        
+        // Show invalid wells details
+        document.getElementById('showInvalidBtn').addEventListener('click', function() {
+            if (invalidWells.length === 0) {
+                showMessage('No invalid wells found.', 'success');
+                return;
+            }
+            
+            let details = `Found ${invalidWells.length} invalid well position(s) for ${currentPlateType}-well plate:\n\n`;
+            invalidWells.forEach((invalid, index) => {
+                details += `${index + 1}. Well "${invalid.original}" → "${invalid.converted}" (Sample: ${invalid.sampleId})\n`;
+            });
+            
+            const dimensions = getPlateDimensions();
+            details += `\nValid range for ${currentPlateType}-well plates: ${dimensions.rowLabels[0]}1 to ${dimensions.rowLabels[dimensions.rows-1]}${dimensions.cols}`;
+            
+            alert(details);
+        });
+        
+        // Plate type change handler
+        document.getElementById('plateType').addEventListener('change', function(e) {
+            currentPlateType = parseInt(e.target.value);
+            const maxWells = getPlateDimensions().rows * getPlateDimensions().cols;
+            document.getElementById('maxSamples').max = maxWells;
+            clearPlate();
+            initializePlate();
+            
+            // If we have data loaded, reprocess it for the new plate type
+            if (csvData.length > 0 || Object.keys(preMappedPositions).length > 0) {
+                // Need to revalidate all existing mappings for new plate type
+                let hasInvalidWells = false;
+                Object.keys(preMappedPositions).forEach(well => {
+                    if (!isValidWellPosition(well)) {
+                        hasInvalidWells = true;
+                    }
+                });
+                
+                if (hasInvalidWells) {
+                    showMessage(`Warning: Some pre-mapped wells are invalid for ${currentPlateType}-well plates. Please reload the file to revalidate.`, 'error');
+                    document.getElementById('showInvalidBtn').style.display = 'inline-block';
+                }
+                
+                displaySamples();
+                if (Object.keys(preMappedPositions).length > 0) {
+                    loadPreMappedPositions();
+                }
+                
+                // Update max samples value for current data
+                if (csvData.length > 0) {
+                    document.getElementById('maxSamples').value = Math.min(maxWells, csvData.length + Object.keys(preMappedPositions).length);
+                }
+            }
+        });
+        
+        // Load additional sample data when pre-mappings exist
+        document.getElementById('loadSamplesBtn').addEventListener('click', function() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.csv,.txt';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const parsed = parseFileContent(e.target.result);
+                            
+                            if (parsed.sampleData.length > 0) {
+                                csvData = parsed.sampleData;
+                                fileType = 'samples';
+                                
+                                displaySamples();
+                                document.getElementById('previewBtn').disabled = false;
+                                document.getElementById('assignBtn').disabled = false;
+                                const maxWells = getPlateDimensions().rows * getPlateDimensions().cols;
+                                document.getElementById('maxSamples').max = csvData.length + Object.keys(preMappedPositions).length;
+                                document.getElementById('maxSamples').value = Math.min(maxWells, csvData.length + Object.keys(preMappedPositions).length);
+                                document.getElementById('loadSamplesBtn').style.display = 'none';
+                                
+                                showMessage(`Loaded ${csvData.length} additional samples. ${Object.keys(preMappedPositions).length} positions pre-mapped.`, 'success');
+                            } else {
+                                showMessage('No sample data found in file.', 'error');
+                            }
+                        } catch (error) {
+                            showMessage('Error parsing sample file: ' + error.message, 'error');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            input.click();
+        });
+        
+        // Real-time preview when parameters change
+        document.getElementById('startWell').addEventListener('change', function() {
+            if (csvData.length > 0 && !isPreviewMode) {
+                previewAssignment();
+            }
+        });
+        
+        document.getElementById('fillDirection').addEventListener('change', function() {
+            if (csvData.length > 0 && !isPreviewMode) {
+                previewAssignment();
+            }
+        });
+        
+        document.getElementById('maxSamples').addEventListener('input', function() {
+            if (csvData.length > 0 && !isPreviewMode) {
+                previewAssignment();
+            }
+        });
+        
+        // Initialize the application
+        initializePlate();
+    </script>
+</body>
+</html>
