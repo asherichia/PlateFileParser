@@ -6,36 +6,81 @@
     <title>96-Well Plate Sample Parser</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 300;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .controls {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
+            margin-bottom: 30px;
+            padding: 25px;
+            background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+            border-radius: 12px;
             border: 1px solid #dee2e6;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .controls-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: flex-end;
+            margin-bottom: 20px;
+        }
+        
+        .controls-row .control-group {
+            flex: 1;
+            min-width: 180px;
+            margin: 0;
         }
         
         .control-group {
-            margin-bottom: 15px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .control-group:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+        
+        .file-control-group {
+            flex: 2;
+            min-width: 250px;
         }
         
         label {
-            display: inline-block;
-            width: 150px;
-            font-weight: bold;
+            display: block;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         input[type="file"] {
@@ -48,23 +93,64 @@
             border-radius: 3px;
         }
         
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+            align-items: center;
+        }
+        
         button {
-            padding: 8px 16px;
-            background: #007bff;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #007bff, #0056b3);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
-            margin-right: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         button:hover {
-            background: #0056b3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+            background: linear-gradient(135deg, #0056b3, #004085);
+        }
+        
+        button:active {
+            transform: translateY(0);
         }
         
         button:disabled {
-            background: #6c757d;
+            background: linear-gradient(135deg, #6c757d, #5a6268);
             cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 2px 6px rgba(108, 117, 125, 0.3);
+        }
+        
+        button.preview-btn {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+        
+        button.preview-btn:hover {
+            background: linear-gradient(135deg, #20c997, #17a2b8);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+        }
+        
+        button.assign-btn {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        }
+        
+        button.assign-btn:hover {
+            background: linear-gradient(135deg, #c82333, #bd2130);
+            box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
         }
         
         .plate-container {
@@ -106,7 +192,7 @@
         .well {
             width: 40px;
             height: 40px;
-            border: 1px solid #ccc;
+            border: 2px solid #e9ecef;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -116,35 +202,79 @@
             text-align: center;
             overflow: hidden;
             position: relative;
+            transition: all 0.2s ease;
+            border-radius: 6px;
+            font-weight: 600;
         }
         
         .well:hover {
-            background: #e3f2fd;
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-color: #2196f3;
+            transform: scale(1.05);
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
         }
         
         .well.filled {
-            background: #4caf50;
+            background: linear-gradient(135deg, #4caf50, #388e3c);
             color: white;
+            border-color: #4caf50;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+        }
+        
+        .well.filled:hover {
+            background: linear-gradient(135deg, #66bb6a, #4caf50);
+            transform: scale(1.08);
         }
         
         .well.selected {
-            background: #ff9800;
+            background: linear-gradient(135deg, #ff9800, #f57c00);
             color: white;
+            border-color: #ff9800;
         }
         
         .well.preview {
-            background: #2196f3;
+            background: linear-gradient(135deg, #2196f3, #1976d2);
             color: white;
+            border-color: #2196f3;
+            animation: pulse 2s infinite;
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+        }
+        
+        .well.preview:hover {
+            background: linear-gradient(135deg, #42a5f5, #2196f3);
+            transform: scale(1.08);
         }
         
         .well.pre-mapped {
-            background: #9c27b0;
+            background: linear-gradient(135deg, #9c27b0, #7b1fa2);
             color: white;
+            border-color: #9c27b0;
+            box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);
+        }
+        
+        .well.pre-mapped:hover {
+            background: linear-gradient(135deg, #ab47bc, #9c27b0);
+            transform: scale(1.08);
         }
         
         .well.conflict {
-            background: #f44336;
+            background: linear-gradient(135deg, #f44336, #d32f2f);
             color: white;
+            border-color: #f44336;
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-2px); }
+            75% { transform: translateX(2px); }
         }
         
         /* Enhanced well hover effects */
@@ -162,17 +292,20 @@
         /* Custom tooltip for wells */
         .well-tooltip {
             position: fixed;
-            background: rgba(0, 0, 0, 0.9);
+            background: linear-gradient(135deg, rgba(44, 62, 80, 0.95), rgba(52, 73, 94, 0.95));
             color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
             white-space: nowrap;
             z-index: 1000;
             pointer-events: none;
-            border: 1px solid #555;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
             display: none;
+            transition: opacity 0.2s ease;
         }
         
         .sample-list {
@@ -200,9 +333,17 @@
         }
         
         .sample-item.highlighted {
-            background: #fff3cd !important;
-            border-color: #ffeaa7 !important;
-            box-shadow: 0 0 0 2px #ffc107;
+            background: linear-gradient(135deg, #fff3cd, #ffeaa7) !important;
+            border-color: #ffc107 !important;
+            box-shadow: 0 0 0 3px #ffc107, 0 4px 12px rgba(255, 193, 7, 0.4) !important;
+            transform: translateX(5px) !important;
+            animation: highlightPulse 1s ease-in-out !important;
+        }
+        
+        @keyframes highlightPulse {
+            0% { box-shadow: 0 0 0 3px #ffc107, 0 4px 12px rgba(255, 193, 7, 0.4); }
+            50% { box-shadow: 0 0 0 5px #ffc107, 0 6px 16px rgba(255, 193, 7, 0.6); }
+            100% { box-shadow: 0 0 0 3px #ffc107, 0 4px 12px rgba(255, 193, 7, 0.4); }
         }
         
         .info-panel {
@@ -237,48 +378,49 @@
         <h1>Well Plate Sample Parser</h1>
         
         <div class="controls">
-            <div class="control-group">
-                <label for="plateType">Plate Type:</label>
-                <select id="plateType">
-                    <option value="96">96-Well Plate (8x12)</option>
-                    <option value="384">384-Well Plate (16x24)</option>
-                </select>
+            <div class="controls-row">
+                <div class="control-group">
+                    <label for="plateType">Plate Type:</label>
+                    <select id="plateType">
+                        <option value="96">96-Well Plate (8x12)</option>
+                        <option value="384">384-Well Plate (16x24)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group file-control-group">
+                    <label for="csvFile">Sample Data File:</label>
+                    <input type="file" id="csvFile" accept=".csv,.txt" />
+                </div>
+                
+                <div class="control-group">
+                    <label for="startWell">Start Well:</label>
+                    <select id="startWell">
+                        <option value="A1">A1</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="fillDirection">Fill Direction:</label>
+                    <select id="fillDirection">
+                        <option value="horizontal">Horizontal (A1, A2, A3...)</option>
+                        <option value="vertical">Vertical (A1, B1, C1...)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="maxSamples">Max Samples:</label>
+                    <input type="number" id="maxSamples" value="96" min="1" max="384" />
+                </div>
             </div>
             
-            <div class="control-group">
-                <label for="csvFile">Sample Data File:</label>
-                <input type="file" id="csvFile" accept=".csv,.txt" />
-                <small style="display: block; color: #666; margin-top: 5px;">
-                    Supports CSV/TXT files with sample data or existing well mappings
-                </small>
+            <div class="button-group">
+                <button id="previewBtn" class="preview-btn" disabled>🔍 Preview Assignment</button>
+                <button id="assignBtn" class="assign-btn" disabled>✅ Assign Samples</button>
+                <button id="clearBtn">🗑️ Clear Plate</button>
+                <button id="loadSamplesBtn" style="display: none;">📁 Load Sample Data</button>
+                <button id="exportBtn" disabled>💾 Export Layout</button>
+                <button id="showInvalidBtn" style="display: none;">⚠️ Show Invalid Wells</button>
             </div>
-            
-            <div class="control-group">
-                <label for="startWell">Start Well:</label>
-                <select id="startWell">
-                    <option value="A1">A1</option>
-                </select>
-            </div>
-            
-            <div class="control-group">
-                <label for="fillDirection">Fill Direction:</label>
-                <select id="fillDirection">
-                    <option value="horizontal">Horizontal (A1, A2, A3...)</option>
-                    <option value="vertical">Vertical (A1, B1, C1...)</option>
-                </select>
-            </div>
-            
-            <div class="control-group">
-                <label for="maxSamples">Max Samples:</label>
-                <input type="number" id="maxSamples" value="96" min="1" max="384" />
-            </div>
-            
-            <button id="previewBtn" disabled>Preview Assignment</button>
-            <button id="assignBtn" disabled>Assign Samples</button>
-            <button id="clearBtn">Clear Plate</button>
-            <button id="loadSamplesBtn" style="display: none;">Load Sample Data</button>
-            <button id="exportBtn" disabled>Export Layout</button>
-            <button id="showInvalidBtn" style="display: none;">Show Invalid Wells</button>
         </div>
         
         <div id="messages"></div>
@@ -302,7 +444,7 @@
             <h4>Instructions:</h4>
             <ol>
                 <li><strong>Select Plate:</strong> Choose 96-well (8x12) or 384-well (16x24) format</li>
-                <li><strong>Load Data:</strong> Upload CSV/TXT files with sample data or existing mappings</li>
+                <li><strong>Load Data:</strong> Upload CSV/TXT files with sample data or existing well mappings</li>
                 <li><strong>Flexible Format:</strong> Supports comma, tab, space-separated files automatically</li>
                 <li><strong>Auto-detection:</strong> Automatically detects well mappings vs. sample data</li>
                 <li><strong>Pre-mapping:</strong> Purple wells show existing position assignments</li>
@@ -447,8 +589,31 @@
         function highlightSampleInList(wellId) {
             clearSampleHighlight();
             
+            // Check if this well has an assignment (including preview)
+            let sampleId = null;
+            
             if (plateAssignments[wellId]) {
-                const sampleId = plateAssignments[wellId];
+                sampleId = plateAssignments[wellId];
+            } else if (isPreviewMode) {
+                // During preview mode, also highlight samples that would be assigned
+                const wellElement = document.getElementById('well-' + wellId);
+                if (wellElement && wellElement.classList.contains('preview')) {
+                    // Extract sample ID from the well's content during preview
+                    const startWell = document.getElementById('startWell').value;
+                    const direction = document.getElementById('fillDirection').value;
+                    const maxSamples = parseInt(document.getElementById('maxSamples').value);
+                    
+                    const samplesToAssign = csvData.slice(0, Math.min(maxSamples, csvData.length));
+                    const positions = calculatePositions(startWell, direction, samplesToAssign.length);
+                    
+                    const wellIndex = positions.indexOf(wellId);
+                    if (wellIndex >= 0 && wellIndex < samplesToAssign.length) {
+                        sampleId = samplesToAssign[wellIndex].sampleId;
+                    }
+                }
+            }
+            
+            if (sampleId) {
                 // Find sample in the list by data-sample-id attribute for exact matching
                 const sampleItems = document.querySelectorAll('.sample-item');
                 sampleItems.forEach(item => {
