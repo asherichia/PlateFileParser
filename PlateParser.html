@@ -371,6 +371,26 @@
             border-radius: 4px;
             margin: 10px 0;
         }
+        
+        .merge-plate-btn {
+            padding: 8px 12px;
+            margin: 2px;
+            font-size: 12px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .merge-plate-btn:disabled {
+            background: linear-gradient(135deg, #6c757d, #5a6268);
+            cursor: not-allowed;
+        }
+        
+        .merge-plate-btn.loaded {
+            background: linear-gradient(135deg, #28a745, #20c997);
+        }
     </style>
 </head>
 <body>
@@ -384,12 +404,25 @@
                     <select id="plateType">
                         <option value="96">96-Well Plate (8x12)</option>
                         <option value="384">384-Well Plate (16x24)</option>
+                        <option value="384-merge">384-Well (4x96 Merge)</option>
                     </select>
                 </div>
                 
                 <div class="control-group file-control-group">
                     <label for="csvFile">Sample Data File:</label>
                     <input type="file" id="csvFile" accept=".csv,.txt" />
+                    <div id="merge-files" style="display: none; margin-top: 10px;">
+                        <div id="merge-status">4x96 Merge Mode: Upload plates sequentially</div>
+                        <div style="margin-top: 5px;">
+                            <button id="loadPlate1" class="merge-plate-btn">Load Plate 1 (Q1)</button>
+                            <button id="loadPlate2" class="merge-plate-btn" disabled>Load Plate 2 (Q2)</button>
+                            <button id="loadPlate3" class="merge-plate-btn" disabled>Load Plate 3 (Q3)</button>
+                            <button id="loadPlate4" class="merge-plate-btn" disabled>Load Plate 4 (Q4)</button>
+                        </div>
+                        <div style="margin-top: 5px;">
+                            <button id="clearMerge" style="background: #dc3545;">Clear All Plates</button>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="control-group">
@@ -443,7 +476,8 @@
         <div class="info-panel">
             <h4>Instructions:</h4>
             <ol>
-                <li><strong>Select Plate:</strong> Choose 96-well (8x12) or 384-well (16x24) format</li>
+                <li><strong>Select Plate:</strong> Choose 96-well (8x12), 384-well (16x24), or 384-well (4x96 Merge) format</li>
+                <li><strong>4x96 Merge:</strong> Select 4 CSV files to merge into 384-well stamping pattern (Quadrants 1-4)</li>
                 <li><strong>Load Data:</strong> Upload CSV/TXT files with sample data or existing well mappings</li>
                 <li><strong>Flexible Format:</strong> Supports comma, tab, space-separated files automatically</li>
                 <li><strong>Auto-detection:</strong> Automatically detects well mappings vs. sample data</li>
@@ -482,6 +516,10 @@
         let fileType = '';
         let currentPlateType = 96;
         let invalidWells = [];
+        let mergeMode = false;
+        let mergeData = [];
+        let loadedPlates = [null, null, null, null]; // Track loaded plates
+        let currentLoadingQuadrant = 1;
         
         // Generate well positions for current plate type
         function generateWellPositions() {
@@ -494,7 +532,7 @@
                         positions.push(rows[row] + col);
                     }
                 }
-            } else if (currentPlateType === 384) {
+            } else if (currentPlateType === 384 || currentPlateType === '384-merge') {
                 const rows = 'ABCDEFGHIJKLMNOP';
                 for (let row = 0; row < 16; row++) {
                     for (let col = 1; col <= 24; col++) {
@@ -510,9 +548,201 @@
         function getPlateDimensions() {
             if (currentPlateType === 96) {
                 return { rows: 8, cols: 12, rowLabels: 'ABCDEFGH' };
-            } else if (currentPlateType === 384) {
+            } else if (currentPlateType === 384 || currentPlateType === '384-merge') {
                 return { rows: 16, cols: 24, rowLabels: 'ABCDEFGHIJKLMNOP' };
             }
+        }
+        
+        // Convert 96-well position to 384-well position based on quadrant
+        function map96To384Well(well96, quadrant) {
+            const rowLetter = well96.charAt(0);
+            const colNumber = parseInt(well96.substring(1));
+            
+            // Convert row letter to index (A=0, B=1, etc.)
+            const rowIndex = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0);
+            
+            let targetRow, targetCol;
+            
+            switch (quadrant) {
+                case 1: // Top-left: A1->A1, A2->A3, A3->A5, etc.
+                    targetRow = rowIndex * 2;
+                    targetCol = (colNumber - 1) * 2 + 1;
+                    break;
+                case 2: // Top-right: A1->A2, A2->A4, A3->A6, etc.
+                    targetRow = rowIndex * 2;
+                    targetCol = (colNumber - 1) * 2 + 2;
+                    break;
+                case 3: // Bottom-left: A1->B1, A2->B3, A3->B5, etc.
+                    targetRow = rowIndex * 2 + 1;
+                    targetCol = (colNumber - 1) * 2 + 1;
+                    break;
+                case 4: // Bottom-right: A1->B2, A2->B4, A3->B6, etc.
+                    targetRow = rowIndex * 2 + 1;
+                    targetCol = (colNumber - 1) * 2 + 2;
+                    break;
+                default:
+                    return null;
+            }
+            
+            // Convert back to well notation
+            const targetRowLetter = String.fromCharCode('A'.charCodeAt(0) + targetRow);
+            return targetRowLetter + targetCol;
+        }
+        
+        // Load a single plate for merge
+        function loadPlateForMerge(quadrant, file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = parseFileContent(e.target.result);
+                    loadedPlates[quadrant - 1] = {
+                        samples: parsed.sampleData,
+                        mappings: parsed.wellMappings,
+                        filename: file.name,
+                        quadrant: quadrant
+                    };
+                    
+                    // Update button state
+                    const btn = document.getElementById(`loadPlate${quadrant}`);
+                    btn.classList.add('loaded');
+                    btn.textContent = `Plate ${quadrant} Loaded ✓`;
+                    
+                    // Enable next button
+                    if (quadrant < 4) {
+                        document.getElementById(`loadPlate${quadrant + 1}`).disabled = false;
+                    }
+                    
+                    // Apply this plate to the 384-well layout
+                    applyPlateToLayout(loadedPlates[quadrant - 1], quadrant);
+                    
+                    updateMergeStatus();
+                    
+                } catch (error) {
+                    showMessage(`Error parsing plate ${quadrant}: ${error.message}`, 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        // Apply a single plate to the 384-well layout
+        function applyPlateToLayout(plateData, quadrant) {
+            let samplesAdded = 0;
+            
+            // Process pre-mapped positions first
+            if (plateData.mappings && Object.keys(plateData.mappings).length > 0) {
+                Object.entries(plateData.mappings).forEach(([well96, sampleId]) => {
+                    const well384 = map96To384Well(well96, quadrant);
+                    if (well384 && isValidWellPosition(well384)) {
+                        plateAssignments[well384] = sampleId;
+                        
+                        const wellElement = document.getElementById('well-' + well384);
+                        if (wellElement) {
+                            wellElement.classList.add('filled');
+                            wellElement.textContent = sampleId.substring(0, 6);
+                            wellElement.title = `Well ${well384}: ${sampleId} (Q${quadrant})`;
+                        }
+                        samplesAdded++;
+                    }
+                });
+            }
+            
+            // Process sample data
+            if (plateData.samples && plateData.samples.length > 0) {
+                const rows96 = 'ABCDEFGH';
+                let sampleIndex = 0;
+                
+                for (let row = 0; row < 8 && sampleIndex < plateData.samples.length; row++) {
+                    for (let col = 1; col <= 12 && sampleIndex < plateData.samples.length; col++) {
+                        const well96 = rows96[row] + col;
+                        const well384 = map96To384Well(well96, quadrant);
+                        
+                        if (well384 && isValidWellPosition(well384) && !plateAssignments[well384]) {
+                            plateAssignments[well384] = plateData.samples[sampleIndex].sampleId;
+                            
+                            const wellElement = document.getElementById('well-' + well384);
+                            if (wellElement) {
+                                wellElement.classList.add('filled');
+                                wellElement.textContent = plateData.samples[sampleIndex].sampleId.substring(0, 6);
+                                wellElement.title = `Well ${well384}: ${plateData.samples[sampleIndex].sampleId} (Q${quadrant})`;
+                            }
+                            samplesAdded++;
+                            sampleIndex++;
+                        }
+                    }
+                }
+            }
+            
+            showMessage(`Plate ${quadrant} loaded: ${samplesAdded} samples added to quadrant ${quadrant}`, 'success');
+            
+            // Update sample list
+            updateMergedSampleList();
+            
+            // Enable export if we have any data
+            if (Object.keys(plateAssignments).length > 0) {
+                document.getElementById('exportBtn').disabled = false;
+            }
+        }
+        
+        // Update the merged sample list display
+        function updateMergedSampleList() {
+            csvData = Object.entries(plateAssignments).map(([well, sampleId]) => ({
+                sampleId: sampleId,
+                well: well,
+                originalQuadrant: getQuadrantFromWell(well)
+            }));
+            
+            displaySamples();
+        }
+        
+        // Update merge status display
+        function updateMergeStatus() {
+            const loadedCount = loadedPlates.filter(p => p !== null).length;
+            const statusDiv = document.getElementById('merge-status');
+            const totalSamples = Object.keys(plateAssignments).length;
+            
+            statusDiv.textContent = `4x96 Merge Mode: ${loadedCount}/4 plates loaded (${totalSamples} total samples)`;
+            
+            if (loadedCount === 4) {
+                statusDiv.textContent += ' - All plates loaded! ✓';
+                const plateNames = loadedPlates.map(p => extractPlateName(p.filename)).join(', ');
+                plateName = `Merged_${plateNames}`;
+                document.getElementById('plateTitle').textContent = `384-Well Plate (4x96 Merge): ${plateName}`;
+            }
+        }
+        
+        // Clear all loaded plates
+        function clearAllMergeData() {
+            loadedPlates = [null, null, null, null];
+            currentLoadingQuadrant = 1;
+            
+            // Reset button states
+            for (let i = 1; i <= 4; i++) {
+                const btn = document.getElementById(`loadPlate${i}`);
+                btn.classList.remove('loaded');
+                btn.textContent = `Load Plate ${i} (Q${i})`;
+                btn.disabled = (i !== 1);
+            }
+            
+            clearPlate();
+            updateMergeStatus();
+        }
+        
+        // Get quadrant number from 384-well position
+        function getQuadrantFromWell(well384) {
+            const rowLetter = well384.charAt(0);
+            const colNumber = parseInt(well384.substring(1));
+            const rowIndex = rowLetter.charCodeAt(0) - 'A'.charCodeAt(0);
+            
+            // Determine quadrant based on the stamping pattern
+            const isEvenRow = (rowIndex % 2) === 1;  // B, D, F, H, etc. are even rows (index 1, 3, 5, 7)
+            const isEvenCol = (colNumber % 2) === 0;  // 2, 4, 6, 8, etc. are even columns
+            
+            if (!isEvenRow && !isEvenCol) return 1; // Odd row, odd col (A1, A3, A5, C1, C3, etc.)
+            if (!isEvenRow && isEvenCol) return 2;   // Odd row, even col (A2, A4, A6, C2, C4, etc.)
+            if (isEvenRow && !isEvenCol) return 3;   // Even row, odd col (B1, B3, B5, D1, D3, etc.)
+            if (isEvenRow && isEvenCol) return 4;    // Even row, even col (B2, B4, B6, D2, D4, etc.)
+            
+            return 1; // fallback
         }
         
         // Validate if a well position exists for the current plate type
@@ -642,8 +872,9 @@
             grid.innerHTML = '';
             
             // Update grid layout
-            grid.style.gridTemplateColumns = `30px repeat(${dimensions.cols}, ${currentPlateType === 384 ? '25px' : '40px'})`;
-            grid.style.gridTemplateRows = `30px repeat(${dimensions.rows}, ${currentPlateType === 384 ? '25px' : '40px'})`;
+            const is384 = (currentPlateType === 384 || currentPlateType === '384-merge');
+            grid.style.gridTemplateColumns = `30px repeat(${dimensions.cols}, ${is384 ? '25px' : '40px'})`;
+            grid.style.gridTemplateRows = `30px repeat(${dimensions.rows}, ${is384 ? '25px' : '40px'})`;
             
             // Add empty corner cell
             const corner = document.createElement('div');
@@ -654,7 +885,7 @@
                 const colLabel = document.createElement('div');
                 colLabel.className = 'col-label';
                 colLabel.textContent = col;
-                colLabel.style.fontSize = currentPlateType === 384 ? '10px' : '14px';
+                colLabel.style.fontSize = is384 ? '10px' : '14px';
                 grid.appendChild(colLabel);
             }
             
@@ -664,7 +895,7 @@
                 const rowLabel = document.createElement('div');
                 rowLabel.className = 'row-label';
                 rowLabel.textContent = dimensions.rowLabels[row];
-                rowLabel.style.fontSize = currentPlateType === 384 ? '10px' : '14px';
+                rowLabel.style.fontSize = is384 ? '10px' : '14px';
                 grid.appendChild(rowLabel);
                 
                 // Wells for this row
@@ -675,9 +906,9 @@
                     well.id = 'well-' + wellId;
                     well.dataset.wellId = wellId;
                     well.title = `Well ${wellId} - Empty`;
-                    well.style.width = currentPlateType === 384 ? '25px' : '40px';
-                    well.style.height = currentPlateType === 384 ? '25px' : '40px';
-                    well.style.fontSize = currentPlateType === 384 ? '6px' : '10px';
+                    well.style.width = is384 ? '25px' : '40px';
+                    well.style.height = is384 ? '25px' : '40px';
+                    well.style.fontSize = is384 ? '6px' : '10px';
                     
                     // Add custom hover events
                     well.addEventListener('mouseenter', function(e) {
@@ -917,9 +1148,18 @@
                 const isPreMapped = Object.values(preMappedPositions).includes(sample.sampleId);
                 const status = isAssigned ? 'assigned' : (isPreMapped ? 'pre-mapped' : '');
                 
+                let extraInfo = '';
+                if (sample.rack || sample.position) {
+                    extraInfo = `<div>Rack: ${sample.rack} | Pos: ${sample.position}</div>`;
+                } else if (sample.well && sample.originalQuadrant) {
+                    extraInfo = `<div>Well: ${sample.well} | Quadrant: ${sample.originalQuadrant}</div>`;
+                } else {
+                    extraInfo = '<div style="color: #888; font-size: 11px;">Single-column sample</div>';
+                }
+                
                 html += `<div class="sample-item ${status}" data-index="${index}" data-sample-id="${sample.sampleId}">
                     <div><strong>${sample.sampleId}</strong></div>
-                    ${sample.rack || sample.position ? `<div>Rack: ${sample.rack} | Pos: ${sample.position}</div>` : '<div style="color: #888; font-size: 11px;">Single-column sample</div>'}
+                    ${extraInfo}
                     ${isPreMapped ? '<div style="color: #9c27b0; font-size: 11px;">Found in pre-mapping</div>' : ''}
                 </div>`;
             });
@@ -1218,6 +1458,13 @@
         
         // Event listeners
         document.getElementById('csvFile').addEventListener('change', function(e) {
+            // Skip processing if in merge mode - let the specific buttons handle it
+            if (currentPlateType === '384-merge') {
+                showMessage('Use the "Load Plate" buttons below for 4x96 merge mode.', 'error');
+                e.target.value = ''; // Clear the file input
+                return;
+            }
+            
             const file = e.target.files[0];
             if (file) {
                 // Extract plate name from filename
@@ -1329,9 +1576,26 @@
         
         // Plate type change handler
         document.getElementById('plateType').addEventListener('change', function(e) {
-            currentPlateType = parseInt(e.target.value);
+            currentPlateType = e.target.value;
             const maxWells = getPlateDimensions().rows * getPlateDimensions().cols;
             document.getElementById('maxSamples').max = maxWells;
+            
+            // Show/hide merge mode UI
+            const mergeFilesDiv = document.getElementById('merge-files');
+            const csvFileInput = document.getElementById('csvFile');
+            
+            if (currentPlateType === '384-merge') {
+                mergeFilesDiv.style.display = 'block';
+                mergeMode = true;
+                // Reset merge state
+                clearAllMergeData();
+            } else {
+                mergeFilesDiv.style.display = 'none';
+                mergeMode = false;
+                // Clear any existing merge data
+                loadedPlates = [null, null, null, null];
+            }
+            
             clearPlate();
             initializePlate();
             
@@ -1419,6 +1683,24 @@
                 previewAssignment();
             }
         });
+        
+        // Add event listeners for merge buttons
+        for (let i = 1; i <= 4; i++) {
+            document.getElementById(`loadPlate${i}`).addEventListener('click', function() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.csv,.txt';
+                input.onchange = function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        loadPlateForMerge(i, file);
+                    }
+                };
+                input.click();
+            });
+        }
+        
+        document.getElementById('clearMerge').addEventListener('click', clearAllMergeData);
         
         // Initialize the application
         initializePlate();
